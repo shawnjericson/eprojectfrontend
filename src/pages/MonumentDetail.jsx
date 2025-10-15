@@ -6,6 +6,7 @@ import 'yet-another-react-lightbox/styles.css';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { API_ENDPOINTS } from '../config/api';
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 
 // Fix Leaflet default marker icon issue
 delete L.Icon.Default.prototype._getIconUrl;
@@ -16,12 +17,20 @@ L.Icon.Default.mergeOptions({
 });
 
 const MonumentDetail = () => {
-  const { id } = useParams();
+  const { id: urlParam } = useParams();
   const navigate = useNavigate();
+  const { t, language, setLanguage } = useLanguage();
+
+  // Extract ID from URL (handles both /monuments/123 and /monuments/123-slug formats)
+  const id = urlParam.includes('-') ? urlParam.split('-')[0] : urlParam;
+
   const [monument, setMonument] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reviews, setReviews] = useState([]);
-  const [language, setLanguage] = useState('vi'); // Default to Vietnamese
+  const [totalReviews, setTotalReviews] = useState(0);
+  const [reviewsPage, setReviewsPage] = useState(1);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
   const [availableLanguages, setAvailableLanguages] = useState(['vi']);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -37,14 +46,13 @@ const MonumentDetail = () => {
 
   useEffect(() => {
     fetchMonumentDetail();
-    fetchReviews();
-  }, [id]);
+    fetchReviews(1, true); // Reset reviews when monument changes
+  }, [id, language]); // Re-fetch when language changes
 
   const fetchMonumentDetail = async () => {
     try {
-      const response = await fetch(`${API_ENDPOINTS.monuments}/${id}`);
+      const response = await fetch(`${API_ENDPOINTS.monuments}/${id}?locale=${language}`);
       const data = await response.json();
-
       console.log('📍 Monument detail:', data);
 
       // Detect available languages from translations
@@ -56,10 +64,11 @@ const MonumentDetail = () => {
           }
         });
       }
+
       setAvailableLanguages(langs);
       console.log('🌐 Available languages:', langs);
-
       setMonument(data);
+      setTotalReviews(data.total_feedbacks || 0);
       setLoading(false);
     } catch (error) {
       console.error('❌ Error fetching monument detail:', error);
@@ -67,21 +76,38 @@ const MonumentDetail = () => {
     }
   };
 
-  const fetchReviews = async () => {
+  const fetchReviews = async (page = 1, reset = false) => {
     try {
-      const response = await fetch(`${API_ENDPOINTS.feedback}?monument_id=${id}`);
-      const result = await response.json();
-      const apiData = result.data || result;
+      if (reset) {
+        setLoadingMoreReviews(true);
+        setReviewsPage(1);
+      } else {
+        setLoadingMoreReviews(true);
+      }
 
-      // Filter only approved reviews for this monument
-      const monumentReviews = apiData.filter(
-        feedback => feedback.monument_id === parseInt(id) && feedback.status === 'approved'
-      );
+      const response = await fetch(`${API_ENDPOINTS.monuments}/${id}/feedbacks?page=${page}&per_page=5`);
+      const data = await response.json();
+      
+      console.log('📝 Reviews data:', data);
 
-      console.log('⭐ Reviews for monument:', monumentReviews);
-      setReviews(monumentReviews);
+      if (reset) {
+        setReviews(data.data || []);
+      } else {
+        setReviews(prev => [...prev, ...(data.data || [])]);
+      }
+      
+      setReviewsPage(page);
+      setHasMoreReviews(data.current_page < data.last_page);
+      setLoadingMoreReviews(false);
     } catch (error) {
       console.error('❌ Error fetching reviews:', error);
+      setLoadingMoreReviews(false);
+    }
+  };
+
+  const loadMoreReviews = () => {
+    if (!loadingMoreReviews && hasMoreReviews) {
+      fetchReviews(reviewsPage + 1, false);
     }
   };
 
@@ -89,21 +115,37 @@ const MonumentDetail = () => {
   const getLocalizedContent = (field) => {
     if (!monument) return '';
 
+    // Special handling for boolean/numeric fields that should preserve 0 or false values
+    const booleanFields = ['is_world_wonder'];
+    const isNumericField = booleanFields.includes(field);
+
     // If selected language is 'vi' (default), use base monument data
     if (language === 'vi') {
-      return monument[field] || '';
+      const value = monument[field];
+      // For boolean fields, return the actual value (0, false, 1, true)
+      if (isNumericField) return value;
+      // Return empty string if value is null, undefined, or 0
+      return (value === null || value === undefined || value === 0) ? '' : value;
     }
 
     // Try to find translation for selected language
     if (monument.translations && monument.translations.length > 0) {
       const translation = monument.translations.find(t => t.language === language);
       if (translation && translation[field]) {
-        return translation[field];
+        const value = translation[field];
+        // For boolean fields, return the actual value
+        if (isNumericField) return value;
+        // Return empty string if value is null, undefined, or 0
+        return (value === null || value === undefined || value === 0) ? '' : value;
       }
     }
 
     // Fallback to base monument data (Vietnamese)
-    return monument[field] || '';
+    const value = monument[field];
+    // For boolean fields, return the actual value
+    if (isNumericField) return value;
+    // Return empty string if value is null, undefined, or 0
+    return (value === null || value === undefined || value === 0) ? '' : value;
   };
 
   const handleReviewSubmit = async (e) => {
@@ -138,7 +180,7 @@ const MonumentDetail = () => {
           setSubmitMessage('');
           setShowReviewModal(false);
           // Refresh reviews
-          fetchReviews();
+          fetchReviews(1, true);
         }, 2000);
       } else {
         setSubmitMessage('❌ Error: ' + (data.message || 'Failed to submit review'));
@@ -178,9 +220,10 @@ const MonumentDetail = () => {
     );
   }
 
-  const averageRating = reviews.length > 0
-    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-    : 0;
+  const averageRating =
+    reviews.length > 0
+      ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
+      : 0;
 
   return (
     <div className="min-h-screen pt-20 bg-gray-50">
@@ -193,13 +236,97 @@ const MonumentDetail = () => {
         />
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center text-white">
-            {monument.is_world_wonder && (
+            {monument.is_world_wonder === 1 && (
               <span className="inline-block px-4 py-2 bg-yellow-500 text-gray-900 rounded-full text-sm font-bold mb-4">
                 World Wonder
               </span>
             )}
             <h1 className="text-5xl font-bold mb-4">{getLocalizedContent('title')}</h1>
             <p className="text-xl">📍 {getLocalizedContent('location') || monument.zone}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Translation Warning */}
+      {!monument.has_translation && language !== 'vi' && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  <strong>{language === 'vi' ? 'Thông báo:' : 'Notice:'}</strong> {language === 'vi' 
+                    ? 'Nội dung này chưa có bản dịch tiếng Việt. Đang hiển thị nội dung gốc.'
+                    : 'This content is not available in your selected language. Showing original content.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Navigation */}
+      <div className="bg-white shadow-sm sticky top-20 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-4">
+            <div className="flex space-x-8">
+              <a
+                href="#description"
+                className="text-gray-600 hover:text-primary-600 font-medium transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('description')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                {language === 'vi' ? 'Mô tả' : 'Description'}
+              </a>
+              {monument.gallery?.length > 0 && (
+                <a
+                  href="#gallery"
+                  className="text-gray-600 hover:text-primary-600 font-medium transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById('gallery')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  {language === 'vi' ? 'Thư viện' : 'Gallery'}
+                </a>
+              )}
+              {(monument.latitude && monument.longitude && monument.latitude !== 0 && monument.longitude !== 0) && (
+                <a
+                  href="#location"
+                  className="text-gray-600 hover:text-primary-600 font-medium transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    document.getElementById('location')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  {language === 'vi' ? 'Vị trí' : 'Location'}
+                </a>
+              )}
+              <a
+                href="#reviews"
+                className="text-gray-600 hover:text-primary-600 font-medium transition-colors"
+                onClick={(e) => {
+                  e.preventDefault();
+                  document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                {language === 'vi' ? 'Đánh giá' : 'Reviews'}
+              </a>
+            </div>
+            <div className="text-sm text-gray-500">
+              {reviews.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <span className="text-yellow-500">★</span>
+                  {averageRating} ({reviews.length} {language === 'vi' ? 'đánh giá' : 'reviews'})
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -225,11 +352,12 @@ const MonumentDetail = () => {
             </div>
           </div>
         )}
+
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
             {/* Description */}
-            <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+            <div id="description" className="bg-white rounded-xl shadow-lg p-8 mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-4">
                 {language === 'vi' ? 'Sơ lược' : 'Description'}
               </h2>
@@ -238,38 +366,32 @@ const MonumentDetail = () => {
               </p>
 
               {/* Featured Image from Gallery */}
-              {monument.gallery && monument.gallery.length > 0 && (
+              {monument.gallery?.length > 0 && (
                 <div className="my-8 rounded-xl overflow-hidden shadow-xl">
                   <img
                     src={monument.gallery[0].image_path}
                     alt={monument.gallery[0].title || 'Featured monument image'}
                     className="w-full h-auto object-cover"
                   />
-                  {monument.gallery[0].description && (
+                  {monument.gallery[0].description ? (
                     <p className="text-center text-sm text-gray-500 mt-2 italic">
                       {monument.gallery[0].description}
                     </p>
-                  )}
+                  ) : null}
                 </div>
               )}
 
-              {getLocalizedContent('content') && (
+              {getLocalizedContent('content') ? (
                 <div
-                  className="prose prose-lg max-w-none text-gray-700
-                    prose-headings:font-bold prose-headings:text-gray-900
-                    prose-h2:text-3xl prose-h2:mt-8 prose-h2:mb-4
-                    prose-h3:text-2xl prose-h3:mt-6 prose-h3:mb-3
-                    prose-p:text-lg prose-p:leading-relaxed prose-p:mb-4
-                    prose-strong:text-gray-900 prose-strong:font-semibold
-                    prose-ul:my-4 prose-li:my-2"
+                  className="prose prose-lg max-w-none text-gray-700 prose-headings:font-bold prose-headings:text-gray-900 prose-h2:text-3xl prose-h2:mt-8 prose-h2:mb-4 prose-h3:text-2xl prose-h3:mt-6 prose-h3:mb-3 prose-p:text-lg prose-p:leading-relaxed prose-p:mb-4 prose-strong:text-gray-900 prose-strong:font-semibold prose-ul:my-4 prose-li:my-2"
                   dangerouslySetInnerHTML={{ __html: getLocalizedContent('content') }}
                 />
-              )}
+              ) : null}
             </div>
 
             {/* Gallery Section */}
-            {monument.gallery && monument.gallery.length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+            {monument.gallery?.length > 0 && (
+              <div id="gallery" className="bg-white rounded-xl shadow-lg p-8 mb-8">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">
                   {language === 'vi' ? '📸 Thư viện ảnh' : '📸 Photo Gallery'}
                 </h2>
@@ -317,7 +439,7 @@ const MonumentDetail = () => {
             )}
 
             {/* Reviews Section */}
-            <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+            <div id="reviews" className="bg-white rounded-xl shadow-lg p-8 mb-8">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold text-gray-900">Reviews</h2>
                 <div className="flex items-center gap-2">
@@ -328,7 +450,9 @@ const MonumentDetail = () => {
                         <span key={i}>{i < Math.round(averageRating) ? '★' : '☆'}</span>
                       ))}
                     </div>
-                    <p className="text-sm text-gray-600">{reviews.length} reviews</p>
+                    <p className="text-sm text-gray-600">
+                      {reviews.length} of {totalReviews} reviews
+                    </p>
                   </div>
                 </div>
               </div>
@@ -357,13 +481,33 @@ const MonumentDetail = () => {
                 )}
               </div>
 
+              {/* Load More Reviews Button */}
+              {hasMoreReviews && (
+                <div className="text-center mb-6">
+                  <button
+                    onClick={loadMoreReviews}
+                    disabled={loadingMoreReviews}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loadingMoreReviews ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-700 mr-2"></div>
+                        {language === 'vi' ? 'Đang tải...' : 'Loading...'}
+                      </div>
+                    ) : (
+                      language === 'vi' ? `Xem thêm ${Math.min(5, totalReviews - reviews.length)} đánh giá` : `Load ${Math.min(5, totalReviews - reviews.length)} more reviews`
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Leave a Review Button */}
               <div className="border-t pt-8">
                 <button
                   onClick={() => setShowReviewModal(true)}
                   className="w-full px-6 py-4 bg-primary-600 text-white text-lg font-bold rounded-lg hover:bg-primary-700 transform hover:scale-105 transition-all duration-300 shadow-lg"
                 >
-                   Leave a Review
+                  Leave a Review
                 </button>
               </div>
             </div>
@@ -372,8 +516,8 @@ const MonumentDetail = () => {
           {/* Sidebar */}
           <div className="lg:col-span-1">
             {/* Map */}
-            {monument.latitude && monument.longitude && monument.latitude !== 0 && monument.longitude !== 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+            {(monument.latitude && monument.longitude && monument.latitude !== 0 && monument.longitude !== 0) && (
+              <div id="location" className="bg-white rounded-xl shadow-lg p-6 mb-8">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Location</h3>
                 <div className="h-64 rounded-lg overflow-hidden relative z-0">
                   <MapContainer
@@ -407,15 +551,15 @@ const MonumentDetail = () => {
                   </p>
                   <p className="font-semibold text-gray-900">{monument.zone}</p>
                 </div>
-                {getLocalizedContent('location') && (
+                {getLocalizedContent('location') ? (
                   <div>
                     <p className="text-sm text-gray-600">
                       {language === 'vi' ? 'Địa điểm' : 'Location'}
                     </p>
                     <p className="font-semibold text-gray-900">{getLocalizedContent('location')}</p>
                   </div>
-                )}
-                {monument.is_world_wonder && (
+                ) : null}
+                {monument.is_world_wonder === 1 && (
                   <div className="pt-3 border-t">
                     <span className="inline-flex items-center gap-2 px-3 py-2 bg-yellow-100 text-yellow-800 rounded-lg text-sm font-semibold">
                       🌟 {language === 'vi' ? 'Kỳ quan thế giới' : 'World Wonder'}
@@ -429,7 +573,7 @@ const MonumentDetail = () => {
       </div>
 
       {/* Lightbox for Gallery */}
-      {monument.gallery && monument.gallery.length > 0 && (
+      {monument.gallery?.length > 0 && (
         <Lightbox
           open={lightboxOpen}
           close={() => setLightboxOpen(false)}
@@ -464,7 +608,11 @@ const MonumentDetail = () => {
             {/* Modal Body */}
             <div className="p-6">
               {submitMessage && (
-                <div className={`mb-4 p-4 rounded-lg ${submitMessage.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <div
+                  className={`mb-4 p-4 rounded-lg ${
+                    submitMessage.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}
+                >
                   {submitMessage}
                 </div>
               )}
@@ -503,7 +651,11 @@ const MonumentDetail = () => {
                         key={star}
                         type="button"
                         onClick={() => setReviewForm({ ...reviewForm, rating: star })}
-                        className={`text-3xl transition-all ${star <= reviewForm.rating ? 'text-yellow-500 scale-110' : 'text-gray-300 hover:text-yellow-300'}`}
+                        className={`text-3xl transition-all ${
+                          star <= reviewForm.rating
+                            ? 'text-yellow-500 scale-110'
+                            : 'text-gray-300 hover:text-yellow-300'
+                        }`}
                       >
                         ★
                       </button>
@@ -550,8 +702,19 @@ const MonumentDetail = () => {
                     {submitting ? (
                       <span className="flex items-center justify-center">
                         <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                         Submitting...
                       </span>
@@ -570,4 +733,3 @@ const MonumentDetail = () => {
 };
 
 export default MonumentDetail;
-

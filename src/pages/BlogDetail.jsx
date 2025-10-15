@@ -13,11 +13,11 @@ const BlogDetail = () => {
 
   useEffect(() => {
     fetchPost();
-  }, [id]);
+  }, [id, globalLanguage]); // Re-fetch when global language changes
 
   const fetchPost = async () => {
     try {
-      const response = await fetch(`${API_ENDPOINTS.posts}/${id}`);
+      const response = await fetch(`${API_ENDPOINTS.posts}/${id}?locale=${globalLanguage}`);
       const data = await response.json();
 
       console.log('📝 Post detail:', data);
@@ -32,6 +32,10 @@ const BlogDetail = () => {
             langs.push(trans.language);
           }
         });
+      }
+      // Always include English as an option for better UX
+      if (!langs.includes('en')) {
+        langs.push('en');
       }
       setAvailableLanguages(langs);
 
@@ -49,13 +53,30 @@ const BlogDetail = () => {
 
   const getLocalizedContent = (field) => {
     if (!post) return '';
-    if (language === 'vi') return post[field];
-    
-    const translation = post.translations?.find(t => t.language === language);
-    if (translation && translation[field]) {
-      return translation[field];
+
+
+
+    // If requesting Vietnamese content
+    if (language === 'vi') {
+      // First try to find Vietnamese translation
+      const viTranslation = post.translations?.find(t => t.language === 'vi');
+      if (viTranslation && viTranslation[field]) {
+        return viTranslation[field];
+      }
+      return post[field] || '';
     }
-    
+
+    // If requesting English content
+    if (language === 'en') {
+      // First try to find English translation
+      const enTranslation = post.translations?.find(t => t.language === 'en');
+      if (enTranslation && enTranslation[field]) {
+        return enTranslation[field];
+      }
+      return post[field] || '';
+    }
+
+    // Default fallback
     return post[field] || '';
   };
 
@@ -121,6 +142,7 @@ const BlogDetail = () => {
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
               {getLocalizedContent('title')}
             </h1>
+
             <div className="flex items-center text-white/90">
               <span className="mr-4">
                 📅 {formatDate(post.published_at || post.created_at)}
@@ -135,42 +157,98 @@ const BlogDetail = () => {
         </div>
       </div>
 
+      {/* Translation Warning */}
+      {!post.has_translation && globalLanguage !== 'vi' && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  <strong>{globalLanguage === 'vi' ? 'Thông báo:' : 'Notice:'}</strong> {globalLanguage === 'vi' 
+                    ? 'Nội dung này chưa có bản dịch tiếng Việt. Đang hiển thị nội dung gốc.'
+                    : 'This content is not available in your selected language. Showing original content.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <article className="py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Language Switcher */}
-          {availableLanguages.length > 1 && (
-            <div className="flex justify-end mb-6">
-              <div className="bg-white rounded-lg shadow-md p-2 flex gap-2">
-                {availableLanguages.map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setLanguage(lang)}
-                    className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                      language === lang
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {lang === 'vi' ? '🇻🇳 Tiếng Việt' : '🇬🇧 English'}
-                  </button>
-                ))}
+          {/* Language Switcher - Always show for better UX */}
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center text-sm text-gray-500">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+              </svg>
+              {language === 'vi' ? 'Ngôn ngữ bài viết' : 'Article Language'}
+            </div>
+
+            <div className="bg-white rounded-lg shadow-md p-1 flex gap-1">
+              <button
+                onClick={() => setLanguage('vi')}
+                className={`px-4 py-2 rounded-md font-medium transition-all duration-200 flex items-center gap-2 ${
+                  language === 'vi'
+                    ? 'bg-primary-600 text-white shadow-md'
+                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <span className="text-lg">🇻🇳</span>
+                <span>Tiếng Việt</span>
+              </button>
+              <button
+                onClick={() => setLanguage('en')}
+                className={`px-4 py-2 rounded-md font-medium transition-all duration-200 flex items-center gap-2 ${
+                  language === 'en'
+                    ? 'bg-primary-600 text-white shadow-md'
+                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <span className="text-lg">🇬🇧</span>
+                <span>English</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Language availability notice */}
+          {!availableLanguages.includes(language) && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <p className="text-yellow-800 text-sm">
+                  {language === 'vi'
+                    ? 'Bài viết này chưa có bản dịch tiếng Việt. Hiển thị nội dung gốc.'
+                    : 'This article is not available in English. Showing original content.'
+                  }
+                </p>
               </div>
             </div>
           )}
 
           {/* Description (if exists) */}
           {getLocalizedContent('description') && (
-            <div className="bg-primary-50 border-l-4 border-primary-600 p-6 mb-8 rounded-r-lg">
+            <div key={`desc-${language}`} className="bg-primary-50 border-l-4 border-primary-600 p-6 mb-8 rounded-r-lg">
               <p className="text-lg text-gray-700 italic">
                 {getLocalizedContent('description')}
               </p>
             </div>
           )}
 
+
+
           {/* Main Content */}
-          <div 
-            className="prose prose-lg max-w-none
+          <div
+            key={language} // Force re-render when language changes for smooth transition
+            className="prose prose-lg max-w-none transition-all duration-300 ease-in-out
               prose-headings:text-gray-900 prose-headings:font-bold
               prose-h2:text-3xl prose-h2:mt-8 prose-h2:mb-4
               prose-h3:text-2xl prose-h3:mt-6 prose-h3:mb-3

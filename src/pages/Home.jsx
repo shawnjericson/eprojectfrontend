@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { API_ENDPOINTS } from '../config/api';
+import { createMonumentUrl } from '../utils/slug';
 
 const Home = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [monuments, setMonuments] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -14,7 +15,7 @@ const Home = () => {
   useEffect(() => {
     const fetchMonuments = async () => {
       try {
-        const response = await fetch(`${API_ENDPOINTS.monuments}?per_page=5`);
+        const response = await fetch(`${API_ENDPOINTS.monuments}?per_page=5&locale=${language}`);
         const result = await response.json();
         const apiData = result.data || result;
         setMonuments(apiData.slice(0, 5)); // Get first 5 monuments for carousel
@@ -24,7 +25,7 @@ const Home = () => {
     };
 
     fetchMonuments();
-  }, []);
+  }, [language]); // Re-fetch when language changes
 
   // Fetch approved reviews
   useEffect(() => {
@@ -147,17 +148,23 @@ const Home = () => {
         {/* Carousel Indicators */}
         {monuments.length > 0 && (
           <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 flex gap-2 z-20">
-            {monuments.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentSlide(index)}
-                className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                  index === currentSlide
-                    ? 'bg-white w-8'
-                    : 'bg-white/50 hover:bg-white/75'
-                }`}
-                aria-label={`Go to slide ${index + 1}`}
-              />
+            {monuments.map((monument, index) => (
+              <div key={index} className="flex flex-col items-center">
+                <button
+                  onClick={() => setCurrentSlide(index)}
+                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                    index === currentSlide
+                      ? 'bg-white w-8'
+                      : 'bg-white/50 hover:bg-white/75'
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+                {!monument.has_translation && language !== 'vi' && (
+                  <span className="text-xs text-yellow-300 mt-1" title="This content is not available in your selected language">
+                    ⚠️
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -251,6 +258,22 @@ const Home = () => {
                       {review.rating}/5
                     </span>
                   </div>
+
+                  {/* Monument Link (if review is for a monument) */}
+                  {review.monument && (
+                    <div className="mb-3">
+                      <Link
+                        to={createMonumentUrl(review.monument.id, review.monument.title)}
+                        className="inline-flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        {review.monument.title}
+                      </Link>
+                    </div>
+                  )}
 
                   {/* Review Message */}
                   <p className="text-gray-700 mb-4 line-clamp-4">

@@ -147,6 +147,13 @@ export const LanguageProvider = ({ children }) => {
         singular: language === 'vi' ? 'hình ảnh' : 'image found',
         plural: language === 'vi' ? 'hình ảnh' : 'images found',
       },
+      zones: {
+        East: language === 'vi' ? 'Miền Đông' : 'East',
+        West: language === 'vi' ? 'Miền Tây' : 'West',
+        North: language === 'vi' ? 'Miền Bắc' : 'North',
+        South: language === 'vi' ? 'Miền Nam' : 'South',
+        Central: language === 'vi' ? 'Trung Tâm' : 'Central',
+      },
     },
 
     // Contact page

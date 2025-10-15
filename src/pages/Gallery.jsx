@@ -380,7 +380,7 @@ const Gallery = () => {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {category === 'all' ? t.gallery.allCategories : category}
+                {category === 'all' ? t.gallery.allCategories : (t.gallery.zones[category] || category)}
               </button>
             ))}
           </div>

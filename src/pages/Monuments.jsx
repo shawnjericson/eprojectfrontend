@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useLanguage } from '../contexts/LanguageContext.jsx';
 import { API_ENDPOINTS } from '../config/api';
-import 'leaflet/dist/leaflet.css';
+import { createMonumentUrl } from '../utils/slug';
 import L from 'leaflet';
 
 // Fix Leaflet default marker icon issue
@@ -34,22 +34,24 @@ const regularIcon = new L.Icon({
 });
 
 const Monuments = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [selectedZone, setSelectedZone] = useState('all');
   const [selectedMonument, setSelectedMonument] = useState(null);
   const [monuments, setMonuments] = useState([]);
   const [filteredMonuments, setFilteredMonuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [displayCount, setDisplayCount] = useState(10); // Show 10 monuments initially
+  const [showMap, setShowMap] = useState(true); // Toggle map visibility
 
   useEffect(() => {
     // Fetch monuments from API
     fetchMonuments();
-  }, []);
+  }, [language]); // Re-fetch when language changes
 
   const fetchMonuments = async () => {
     try {
-      // Fetch ALL monuments from Laravel API (without pagination)
-      const response = await fetch(`${API_ENDPOINTS.monuments}?per_page=1000`);
+      // Fetch ALL monuments from Laravel API with locale parameter
+      const response = await fetch(`${API_ENDPOINTS.monuments}?per_page=1000&locale=${language}`);
       const result = await response.json();
 
       // Laravel returns paginated data with 'data' property
@@ -66,7 +68,7 @@ const Monuments = () => {
         longitude: parseFloat(monument.longitude) || 0,
         location: monument.location || monument.zone,
         history: monument.history || monument.description || 'No history available',
-        content: monument.content || monument.history || monument.description || 'No content available',
+        content: monument.excerpt || monument.description || 'No content available',
         is_world_wonder: monument.is_world_wonder === 1 || monument.is_world_wonder === true,
       }));
 
@@ -135,6 +137,8 @@ const Monuments = () => {
     } else {
       setFilteredMonuments(monuments.filter(m => m.zone === selectedZone));
     }
+    // Reset display count when filter changes
+    setDisplayCount(10);
   }, [selectedZone, monuments]);
 
   // Filter World Wonders from monuments (from database)
@@ -175,90 +179,168 @@ const Monuments = () => {
         </div>
       </section>
 
-      {/* Map Section */}
+      {/* Map Section - Collapsible */}
       <section className="py-8 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-6">Monument Locations</h2>
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden" style={{ height: '500px' }}>
-            <MapContainer
-              center={[20, 0]}
-              zoom={2}
-              style={{ height: '100%', width: '100%' }}
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-3xl font-bold text-gray-900">Monument Locations</h2>
+            <button
+              onClick={() => setShowMap(!showMap)}
+              className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg shadow hover:shadow-md transition-all duration-300 text-gray-700 font-medium"
             >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              />
-              {/* Show ALL monuments on map, not just filtered ones */}
-              {monuments.map((monument) => (
-                <Marker
-                  key={monument.id}
-                  position={[monument.latitude, monument.longitude]}
-                  icon={monument.is_world_wonder ? worldWonderIcon : regularIcon}
-                >
-                  <Popup>
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <h3 className="font-bold text-lg">{monument.title}</h3>
-                        {monument.is_world_wonder && <span className="text-xl">⭐</span>}
-                      </div>
-                      <img
-                        src={monument.image}
-                        alt={monument.title}
-                        className="w-48 h-32 object-cover rounded mb-2"
-                      />
-                      <p className="text-sm text-gray-600">{monument.zone} Zone</p>
-                      {monument.is_world_wonder && (
-                        <p className="text-xs text-yellow-600 font-semibold mt-1">🌟 World Wonder</p>
-                      )}
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
+              {showMap ? (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
+                  Hide Map
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  Show Map
+                </>
+              )}
+            </button>
           </div>
+
+          {showMap && (
+            <div className="bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-500" style={{ height: '400px' }}>
+              <MapContainer
+                center={[20, 0]}
+                zoom={2}
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                />
+                {/* Show filtered monuments on map based on selected zone */}
+                {filteredMonuments.map((monument) => (
+                  <Marker
+                    key={monument.id}
+                    position={[monument.latitude, monument.longitude]}
+                    icon={monument.is_world_wonder ? worldWonderIcon : regularIcon}
+                  >
+                    <Popup>
+                      <div className="text-center w-48">
+                        <div className="flex items-center justify-center gap-1 mb-2">
+                          <h3 className="font-bold text-sm">{monument.title}</h3>
+                          {monument.is_world_wonder && <span className="text-sm">⭐</span>}
+                        </div>
+                        {!monument.has_translation && language !== 'vi' && (
+                          <div className="mb-2">
+                            <span className="px-1 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">
+                              ⚠️
+                            </span>
+                          </div>
+                        )}
+                        <img
+                          src={monument.image}
+                          alt={monument.title}
+                          className="w-32 h-20 object-cover rounded mx-auto mb-2"
+                          loading="lazy"
+                        />
+                        <p className="text-xs text-gray-600 mb-2">{monument.zone} Zone</p>
+                        {monument.is_world_wonder && (
+                          <p className="text-xs text-yellow-600 font-semibold mb-2">🌟 World Wonder</p>
+                        )}
+                        <button
+                          onClick={() => window.location.href = createMonumentUrl(monument.id, monument.title)}
+                          className="w-full px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded hover:bg-primary-700 transition-colors"
+                        >
+                          {t.common.readMore}
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Monuments Grid */}
+      {/* Monuments Grid with Pagination */}
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">
-            {selectedZone === 'all' ? 'All Monuments' : `${selectedZone} Zone Monuments`}
-          </h2>
-          
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-bold text-gray-900">
+              {selectedZone === 'all' ? 'All Monuments' : `${selectedZone} Zone Monuments`}
+              <span className="text-lg text-gray-500 ml-3">
+                ({filteredMonuments.length} total)
+              </span>
+            </h2>
+          </div>
+
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredMonuments.map((monument) => (
-                <div
-                  key={monument.id}
-                  className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer"
-                  onClick={() => window.location.href = `/monuments/${monument.id}`}
-                >
-                  <img
-                    src={monument.image}
-                    alt={monument.title}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xl font-bold text-gray-900">{monument.title}</h3>
-                      <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
-                        {monument.zone}
-                      </span>
+            <>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredMonuments.slice(0, displayCount).map((monument) => (
+                  <div
+                    key={monument.id}
+                    className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer"
+                    onClick={() => window.location.href = createMonumentUrl(monument.id, monument.title)}
+                  >
+                    <img
+                      src={monument.image}
+                      alt={monument.title}
+                      className="w-full h-48 object-cover"
+                      loading="lazy"
+                    />
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-xl font-bold text-gray-900">{monument.title}</h3>
+                        <div className="flex items-center gap-2">
+                          {!monument.has_translation && language !== 'vi' && (
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium" title="This content is not available in your selected language">
+                              ⚠️ {language === 'vi' ? 'Chưa có bản dịch' : 'No Translation'}
+                            </span>
+                          )}
+                          <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
+                            {monument.zone}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-gray-600 mb-4 line-clamp-2">{monument.description}</p>
+                      <button className="text-primary-600 font-semibold hover:text-primary-700 transition-colors">
+                        {t.common.readMore} →
+                      </button>
                     </div>
-                    <p className="text-gray-600 mb-4">{monument.description}</p>
-                    <button className="text-primary-600 font-semibold hover:text-primary-700 transition-colors">
-                      {t.common.readMore} →
-                    </button>
                   </div>
+                ))}
+              </div>
+
+              {/* Load More Button */}
+              {displayCount < filteredMonuments.length && (
+                <div className="text-center mt-12">
+                  <button
+                    onClick={() => setDisplayCount(displayCount + 10)}
+                    className="px-8 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transform hover:scale-105 transition-all duration-300 shadow-lg"
+                  >
+                    Load More Monuments ({filteredMonuments.length - displayCount} remaining)
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Show All Button (if more than 20 hidden) */}
+              {displayCount < filteredMonuments.length && (filteredMonuments.length - displayCount) > 20 && (
+                <div className="text-center mt-4">
+                  <button
+                    onClick={() => setDisplayCount(filteredMonuments.length)}
+                    className="px-6 py-2 text-primary-600 font-medium hover:text-primary-700 transition-colors"
+                  >
+                    Show All ({filteredMonuments.length})
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -279,7 +361,7 @@ const Monuments = () => {
                 <div
                   key={wonder.id}
                   className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer"
-                  onClick={() => window.location.href = `/monuments/${wonder.id}`}
+                  onClick={() => window.location.href = createMonumentUrl(wonder.id, wonder.title)}
                 >
                   <img
                     src={wonder.image || 'https://via.placeholder.com/400x300?text=No+Image'}

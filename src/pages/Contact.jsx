@@ -1,11 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const Contact = () => {
   const { t } = useLanguage();
-  const [userLocation, setUserLocation] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -14,30 +11,12 @@ const Contact = () => {
   });
   const [submitted, setSubmitted] = useState(false);
 
-  // Company location
+  // Company location - Aptech Computer Education
   const companyLocation = {
-    lat: 40.7128,
-    lng: -74.0060,
-    address: '123 Heritage Street, History City, HC 12345',
-    name: 'Global Heritage HQ',
+    address: '35/6 Đường D5, Phường 25, Bình Thạnh, Hồ Chí Minh',
+    name: 'Aptech Computer Education',
+    googleMapsEmbed: 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.0604019152784!2d106.7141946!3d10.806685900000002!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x317529ed00409f09%3A0x11f7708a5c77d777!2zQXB0ZWNoIENvbXB1dGVyIEVkdWNhdGlvbiAtIEjhu4cgVGjhu5FuZyDEkMOgbyB04bqhbyBM4bqtcCBUcsOsbmggVmnDqm4gUXXhu5FjIHThur8gQXB0ZWNo!5e0!3m2!1svi!2s!4v1759498940442!5m2!1svi!2s',
   };
-
-  useEffect(() => {
-    // Get user's current location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-        }
-      );
-    }
-  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -46,15 +25,37 @@ const Contact = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // In production, send to API
-    console.log('Form submitted:', formData);
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFormData({ name: '', email: '', subject: '', message: '' });
-    }, 3000);
+
+    try {
+      // Send to Laravel API
+      const response = await fetch('http://127.0.0.1:8000/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        console.log('Contact message sent successfully:', data);
+        setSubmitted(true);
+        setTimeout(() => {
+          setSubmitted(false);
+          setFormData({ name: '', email: '', subject: '', message: '' });
+        }, 3000);
+      } else {
+        console.error('Failed to send message:', data);
+        alert('Failed to send message. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error sending contact message:', error);
+      alert('Failed to send message. Please try again.');
+    }
   };
 
   const contactInfo = [
@@ -85,8 +86,8 @@ const Contact = () => {
         </svg>
       ),
       title: t.contact.phone,
-      content: '+1 (555) 123-4567',
-      link: 'tel:+15551234567',
+      content: '18001779',
+      link: 'tel:+18001779',
     },
     {
       icon: (
@@ -144,42 +145,26 @@ const Contact = () => {
       <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12">
-            {/* Map */}
+            {/* Google Map */}
             <div>
               <h2 className="text-3xl font-bold text-gray-900 mb-6">{t.contact.ourLocation}</h2>
               <div className="bg-white rounded-xl shadow-lg overflow-hidden" style={{ height: '500px' }}>
-                <MapContainer
-                  center={[companyLocation.lat, companyLocation.lng]}
-                  zoom={13}
-                  style={{ height: '100%', width: '100%' }}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  <Marker position={[companyLocation.lat, companyLocation.lng]}>
-                    <Popup>
-                      <div className="text-center">
-                        <h3 className="font-bold text-lg mb-1">{companyLocation.name}</h3>
-                        <p className="text-sm text-gray-600">{companyLocation.address}</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                  {userLocation && (
-                    <Marker position={[userLocation.lat, userLocation.lng]}>
-                      <Popup>
-                        <div className="text-center">
-                          <p className="font-semibold">Your Location</p>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  )}
-                </MapContainer>
+                <iframe
+                  src={companyLocation.googleMapsEmbed}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Aptech Computer Education Location"
+                ></iframe>
               </div>
               <div className="mt-4 p-4 bg-primary-50 rounded-lg">
                 <p className="text-sm text-gray-700">
-                  <span className="font-semibold">Note:</span> The map shows our office location. 
-                  {userLocation && ' Your current location is also marked on the map.'}
+                  <span className="font-semibold">📍 {companyLocation.name}</span>
+                  <br />
+                  {companyLocation.address}
                 </p>
               </div>
             </div>

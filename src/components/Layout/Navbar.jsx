@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { API_ENDPOINTS } from '../../config/api';
+// import NotificationBell from '../NotificationBell';
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -22,31 +23,41 @@ const Navbar = () => {
     // Track visitor via API (IP-based tracking)
     const trackVisitor = async () => {
       try {
+        console.log('🔄 Tracking visitor...');
         const response = await fetch(API_ENDPOINTS.visitorTrack, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
         });
 
+        console.log('📊 Response status:', response.status);
+        
         if (response.ok) {
           const data = await response.json();
+          console.log('✅ Visitor tracking successful:', data);
           setVisitorCount(data.visitor_count);
 
           // Optional: Show a welcome message for new visitors
           if (data.is_new_visitor) {
-            console.log('Welcome, new visitor!');
+            console.log('🎉 Welcome, new visitor!');
           }
         } else {
+          console.error('❌ Tracking failed with status:', response.status);
+          const errorText = await response.text();
+          console.error('❌ Error response:', errorText);
+          
           // Fallback: fetch current count if tracking fails
           const countResponse = await fetch(API_ENDPOINTS.visitorCount);
           if (countResponse.ok) {
             const countData = await countResponse.json();
+            console.log('📊 Fallback count:', countData);
             setVisitorCount(countData.visitor_count);
           }
         }
       } catch (error) {
-        console.error('Error tracking visitor:', error);
+        console.error('❌ Error tracking visitor:', error);
         // Fallback to localStorage if API fails
         const count = localStorage.getItem('visitorCount') || 0;
         const newCount = parseInt(count) + 1;
@@ -124,6 +135,11 @@ const Navbar = () => {
             </span>
           </button>
 
+          {/* Notification Bell */}
+          {/* <div className="flex items-center">
+            <NotificationBell />
+          </div> */}
+
           {/* Visitor Counter */}
           <div className="hidden lg:flex items-center space-x-2 bg-primary-50 px-4 py-2 rounded-lg">
             <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -191,6 +207,11 @@ const Navbar = () => {
                 </span>
               </span>
             </button>
+
+        {/* Mobile Notifications */}
+        {/* <div className="px-4 py-3 bg-gray-50 rounded-lg">
+          <NotificationBell />
+        </div> */}
 
             <div className="px-4 py-3 bg-primary-50 rounded-lg flex items-center justify-between">
               <span className="text-sm text-gray-600">Visitors:</span>

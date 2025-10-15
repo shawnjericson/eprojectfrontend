@@ -6,36 +6,18 @@ import { useLanguage } from '../../contexts/LanguageContext';
 const Footer = () => {
   const { t } = useLanguage();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [location, setLocation] = useState({ city: 'Loading...', country: '' });
+
+  // Fixed location - Aptech Computer Education, Ho Chi Minh City
+  const location = {
+    city: 'Hồ Chí Minh',
+    country: 'Việt Nam'
+  };
 
   useEffect(() => {
     // Update time every second
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-
-    // Get user location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            const response = await fetch(
-              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`
-            );
-            const data = await response.json();
-            setLocation({
-              city: data.city || data.locality || 'Unknown',
-              country: data.countryName || '',
-            });
-          } catch (error) {
-            setLocation({ city: 'Unknown', country: '' });
-          }
-        },
-        () => {
-          setLocation({ city: 'Location unavailable', country: '' });
-        }
-      );
-    }
 
     return () => clearInterval(timer);
   }, []);
@@ -139,7 +121,7 @@ const Footer = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span>123 Heritage Street, History City, HC 12345</span>
+                <span>35/6 Đường D5, Phường 25, Bình Thạnh, Hồ Chí Minh</span>
               </li>
               <li className="flex items-center space-x-2">
                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -153,7 +135,9 @@ const Footer = () => {
                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                 </svg>
-                <span>+1 (555) 123-4567</span>
+                <a href="tel:+18001779" className="hover:text-primary-400 transition-colors">
+                  18001779
+                </a>
               </li>
             </ul>
           </div>
